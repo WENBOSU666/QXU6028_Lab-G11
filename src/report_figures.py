@@ -258,20 +258,27 @@ def fig04(d):
 
 def fig05_06(d):
     example = int(np.argmin(abs(d["gaps"] - 2)))
-    for col, name, title, ylabel in [
-            (0, "fig05_report.png", "(a) Normalised Hall coefficient", r"$R_H/\max|R_H|$"),
-            (1, "fig06_report.png", "(b) Normalised sheet resistance", r"$R_{xx}/\max R_{xx}$")]:
-        fig, ax = plt.subplots(figsize=(7.4, 4.2), layout="constrained")
-        for j, lab, colr in [(0, "Cone: $E_g=0$", GREY),
-                             (example, "Example: $E_g=2\\,k_BT$", ORANGE),
-                             (d["chosen"],
-                              f"Selected: $E_g={d['gaps'][d['chosen']]:g}\\,k_BT$", TEAL)]:
-            ax.plot(d["ef_grid"] / d["kT"], d["lib"][j, :, col], color=colr, lw=1.6, label=lab)
+    xy = d["normalise"](d["means"])
+    ef_meas = d["traj"] / d["kT"]
+    best = d["gaps"][d["chosen"]]
+    ylabels = [r"Normalised $R_H$", r"Normalised $R_s$"]
+    for col, name, title in [
+            (0, "fig05_report.png", "Hall coefficient versus Fermi level"),
+            (1, "fig06_report.png", "Sheet resistance versus Fermi level")]:
+        fig, ax = plt.subplots(figsize=(8.6, 4.6), layout="constrained")
+        ax.plot(d["ef_grid"] / d["kT"], d["lib"][0, :, col], "--", color="#5b6b8c",
+                lw=1.6, label=r"Cone, $E_g=0$")
+        ax.plot(d["ef_grid"] / d["kT"], d["lib"][example, :, col], "-.", color=ORANGE,
+                lw=1.6, label=r"Trial gap, $2.00\,k_BT$")
+        ax.plot(d["ef_grid"] / d["kT"], d["lib"][d["chosen"], :, col], "-", color=TEAL,
+                lw=1.9, label=rf"Best gap, ${best:.2f}\,k_BT$")
+        ax.plot(ef_meas, xy[:, col], "o", mfc="none", mec="#2f4a5a", ms=4.2, mew=0.9,
+                label=r"G11 means at fitted $E_F$")
         ax.axvline(0, color="gray", ls=":", lw=0.9)
         if col == 0:
-            ax.axhline(0, color="gray", ls=":", lw=0.9)
-        style(ax, title, r"$E_F / k_B T$", ylabel)
-        ax.legend(fontsize=8.5, frameon=False, loc="best")
+            ax.axhline(0, color="gray", lw=0.8)
+        style(ax, title, r"Fermi level, $E_F/k_BT$", ylabels[col])
+        ax.legend(fontsize=9, frameon=False, loc="upper right")
         save(fig, name)
 
 
