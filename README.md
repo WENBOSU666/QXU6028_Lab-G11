@@ -46,7 +46,7 @@ The command reads the raw files in `data/`, runs the three stages in order and w
 |---|---|---|
 | L1 | correction factor **C = 3.953** at E_F = 0.15550 eV; n_F = 4.6127 × 10¹¹ cm⁻²; mobility **47,337 cm² V⁻¹ s⁻¹** | `output/fig_L1.png` |
 | L2 | **hard_gap** model; **E_g = 3.25 k_BT (84.0 meV)**; E_F from −77.9 to +135.7 meV; RMS 0.0987 → 0.0126 | `output/fig_L2_*.png` |
-| L3 | map max **+2.9094 %** at (-0.9, -2.1), min -1.7557 %; resolution **1.74 probe pitches**; detection limit 0.00022 %; **pass** (margin 2.9096 % < 3.0 %) | output/fig_L3_*.png |
+| L3 | map max **+2.9094 %** at (-0.9, -2.1), min -1.7557 %; resolution **1.74 probe pitches**; detection limit 0.000275 %; **pass** (margin 2.9097 % < 3.0 %) | output/fig_L3_*.png |
 
 ## Reproducibility notes
 

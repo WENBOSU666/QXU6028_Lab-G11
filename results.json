@@ -2,7 +2,7 @@
   "schema_version": "QXU6028-results-v1",
   "group": "G11",
   "dataset_set": "regular",
-  "pipeline_commit": "b4d12b45ecbc08dcf31822bd13dc75647265fb82",
+  "pipeline_commit": "e15cc8907abc0796844c375edd09c5525d826f40",
   "L1": {
     "correction_factor": 3.9530778234531465,
     "n_fermi_op_cm2": 461272662928.49347,
@@ -208,9 +208,9 @@
       }
     ],
     "resolution_probe_pitch": 1.735,
-    "detection_limit_fraction": 2.243e-06,
+    "detection_limit_fraction": 2.75e-06,
     "pass": true,
-    "confidence": "95%: detection limit 0.00022% from 500 noise-only reconstructions; margin 2.9096% against 3.0%"
+    "confidence": "95%: detection limit 0.00028% from 500 noise-only reconstructions; margin 2.9097% against 3.0%"
   },
   "diagnostics": {
     "C_at_010eV": 2.598845161149426,

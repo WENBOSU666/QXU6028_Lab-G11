@@ -73,7 +73,7 @@ def build(lam: float):
     pitch = REGION_IN_PITCH / side
     inv = Inverter(A, lam)
     d = D.mean(axis=0)
-    sigma = float(D.std(axis=0, ddof=1).mean())
+    sigma = D.std(axis=0, ddof=1)          # per-channel noise: each reading has its own repeat spread
     return A, D, meta, side, pitch, inv, d, sigma
 
 
@@ -126,7 +126,7 @@ def main():
     rng = np.random.default_rng(SEED)
     peaks = []
     for _ in range(N_NOISE):
-        nv = rng.normal(0.0, sigma, size=A.shape[0])
+        nv = rng.normal(0.0, sigma)
         peaks.append(np.abs(inv(A.T @ nv) * 100.0).max())
     detection_pct = float(np.percentile(peaks, 95))
 
@@ -152,7 +152,8 @@ def main():
         "diagnostics": {
             "lambda_ref": LAMBDA_REF,
             "pitch_probe_pitch": pitch,
-            "sigma_per_reading": sigma,
+            "sigma_per_reading_mean": float(np.mean(sigma)),
+            "sigma_per_reading_max": float(np.max(sigma)),
             "margin_pct": margin,
             "resolution_centre_pitch": round(w_centre * pitch, 3),
             "resolution_offcentre_pitch": round(w_off * pitch, 3),

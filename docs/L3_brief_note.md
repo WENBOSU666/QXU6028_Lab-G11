@@ -21,7 +21,7 @@ constant. `rank(A) = 92`, so eight directions of the 100-pixel map are unobserva
 
 ## Method
 
-1. Average the three repeats at each channel; noise σ = std over repeats (mean 1.61 × 10⁻⁷).
+1. Average the three repeats at each channel; noise σ per channel = std over its three repeats (mean 1.61 × 10⁻⁷, max 4.63 × 10⁻⁷).
 2. Solve the regularised normal equations `(AᵀA + λ LᵀL) m = Aᵀ d` with `L` the first-order
    neighbour-difference operator on the 10 × 10 grid, then subtract the mean of `m`
    (exactly the zero-mean constraint, since `A @ 1 = 0`).
@@ -39,9 +39,9 @@ constant. `rank(A) = 92`, so eight directions of the 100-pixel map are unobserva
 | maximum deviation | **+2.9094 %** at (−0.9, −2.1) probe pitches |
 | minimum deviation | **−1.7557 %** at (+2.7, +2.7) probe pitches |
 | spatial resolution | **1.74 probe pitches** (centre 1.74, off-centre 1.56) |
-| detection limit (95 %) | **0.00022 %** |
-| noise-adjusted margin | **2.9096 %** |
-| decision | **pass** (2.9096 % < 3.0 %) |
+| detection limit (95 %) | **0.000275 %** (per-channel noise, 500 draws) |
+| noise-adjusted margin | **2.9097 %** |
+| decision | **pass** (2.9097 % < 3.0 %) |
 
 Across the five smoothness strengths the peak position never moves and the amplitude runs
 from 2.9540 % (weakest) to 2.5263 % (strongest), so the pass decision is stable; the weakest
