@@ -46,7 +46,7 @@ The command reads the raw files in `data/`, runs the three stages in order and w
 |---|---|---|
 | L1 | correction factor **C = 3.953** at E_F = 0.15550 eV; n_F = 4.6127 × 10¹¹ cm⁻²; mobility **47,337 cm² V⁻¹ s⁻¹** | `output/fig_L1.png` |
 | L2 | **hard_gap** model; **E_g = 3.25 k_BT (84.0 meV)**; E_F from −77.9 to +135.7 meV; RMS 0.0987 → 0.0126 | `output/fig_L2_*.png` |
-| L3 | — | pending L3 data |
+| L3 | map max **+2.9094 %** at (-0.9, -2.1), min -1.7557 %; resolution **1.74 probe pitches**; detection limit 0.00022 %; **pass** (margin 2.9096 % < 3.0 %) | output/fig_L3_*.png |
 
 ## Reproducibility notes
 
@@ -59,10 +59,10 @@ The command reads the raw files in `data/`, runs the three stages in order and w
 
 ## L3 status
 
-`src/l3_map.py` is implemented and will run as soon as `data/L3_A.npy`, `data/L3_d.csv`
-and `data/L3_meta.json` are present. Until then L3 fields in `results.json` are empty and
-`reproduce.py` prints a warning. **L3 must be completed before submission** — it carries
-20 % of the coursework plus the live blind test.
+L3 is complete. src/l3_map.py reconstructs the zero-mean map, locates the extrema,
+estimates the resolution from the point-spread function and the detection limit from 500
+noise-only reconstructions, then decides pass/fail against the 3.0 % specification.
+See docs/L3_brief_note.md for the method and output/fig_L3_*.png for the figures.
 
 ## Team
 
@@ -70,7 +70,7 @@ and `data/L3_meta.json` are present. Until then L3 fields in `results.json` are 
 |---|---|---|
 | Wang Boyi | 2023304384 | L1 + L2 + L3 |
 | Su Wenbo | 2023304316 | L1 + L2 + L3 |
-| *(partial)* | — | L1 + L2 |
-| *(partial)* | — | L2 + L3 |
+| Lin Zhiyuan | 2023304268 | L1 + L2 |
+| Zhai Xiangru | 2023304281 | L2 + L3 |
 
 Signed record: `docs/contribution_statement.pdf`.
