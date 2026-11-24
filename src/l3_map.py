@@ -1,15 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-L3 — two-dimensional inverse: Hall-conductivity map, resolution, detection limit,
-and the pass/fail decision for the announced 3 % uniformity specification.
+L3 — two-dimensional inverse: Hall-conductivity non-uniformity map, spatial
+resolution, detection limit and the pass/fail decision for the 3 % specification.
 
-The forward relation is d = A m, where A is blind to a uniform offset (every row
-sums to zero), so the inversion must impose a zero-mean constraint on m.
+Forward relation: d = A m, with A (128 x 100) supplied already row-centred, so
+every row sums to zero and the probe is blind to a uniform offset. The map is
+therefore obtained under a zero-mean constraint (subtracting the mean leaves the
+predictions unchanged because A @ 1 = 0).
 
-Expected files in data/:
-    L3_A.npy      (128, 100) forward matrix
-    L3_d.csv      repeated readings, columns like measurement_index, repeat, d_raw
-    L3_meta.json  grid geometry (10 x 10), pitch / extent, reference value, spec
+Files read from data/:
+    L3_A.npy     (128, 100) forward matrix
+    L3_d.csv     (3, 128)    three repeats of the 128 readings, no header
+    L3_meta.json grid size, region and projection note
 """
 from __future__ import annotations
 
@@ -23,45 +25,18 @@ DATA = ROOT / "data"
 OUT = ROOT / "output"
 OUT.mkdir(parents=True, exist_ok=True)
 
-A_PATH = DATA / "L3_A.npy"
-D_PATH = DATA / "L3_d.csv"
-META_PATH = DATA / "L3_meta.json"
-
-SPEC_DEFAULT = 3.0          # per cent
-LAMBDA_SCALES = (0.01, 0.1, 1.0, 10.0, 100.0)
+N_PIX = 10                 # 10 x 10 map
+REGION_IN_PITCH = 6.0      # scan region is 6s x 6s, s = probe pitch
+SPEC_PERCENT = 3.0
+LAMBDA_REF = 1.33e-3       # reference smoothness strength
+SWEEP_FACTORS = (0.01, 0.1, 1.0, 10.0, 100.0)
 N_NOISE = 500
 SEED = 0
 
 
-def load():
-    A = np.load(A_PATH)
-    meta = json.loads(META_PATH.read_text(encoding="utf-8-sig"))
-    raw = np.genfromtxt(D_PATH, delimiter=",", names=True)
-    return A, raw, meta
-
-
-def repeats_matrix(raw):
-    """Return (n_readings, n_repeats) array of readings."""
-    names = raw.dtype.names or ()
-    idx = next((n for n in names if "index" in n.lower()), None)
-    rep = next((n for n in names if "repeat" in n.lower()), None)
-    val = next((n for n in names if n not in (idx, rep)), names[0])
-    if idx is None or rep is None:
-        return raw[val].reshape(-1, 1)
-    order = np.unique(raw[idx]).astype(int)
-    reps = np.unique(raw[rep]).astype(int)
-    out = np.empty((len(order), len(reps)))
-    for i, k in enumerate(order):
-        for j, r in enumerate(reps):
-            sel = (raw[idx] == k) & (raw[rep] == r)
-            out[i, j] = raw[val][sel].mean()
-    return out
-
-
-def difference_operator(n_pix):
-    """Neighbour differences on a 1-D flattened grid (no wrap-around)."""
+def difference_operator(n_pix: int, side: int) -> np.ndarray:
+    """Neighbour differences on the side x side grid (no wrap-around)."""
     rows = []
-    side = int(round(np.sqrt(n_pix)))
     for r in range(side):
         for c in range(side):
             k = r * side + c
@@ -76,105 +51,119 @@ def difference_operator(n_pix):
     return np.asarray(rows)
 
 
-def solve(A, d, lam, L):
-    """Regularised least squares, then project onto the zero-mean constraint.
+class Inverter:
+    def __init__(self, A: np.ndarray, lam: float):
+        self.A = A
+        self.n = A.shape[1]
+        self.side = int(round(np.sqrt(self.n)))
+        self.L = difference_operator(self.n, self.side)
+        self.lhs = A.T @ A + lam * (self.L.T @ self.L) + 1e-12 * np.eye(self.n)
 
-    A @ 1 = 0, so subtracting the mean from m leaves the predictions unchanged;
-    this is exactly the constraint the probe geometry demands.
-    """
-    n = A.shape[1]
-    lhs = A.T @ A + lam * (L.T @ L) + 1e-12 * np.eye(n)
-    m = np.linalg.solve(lhs, A.T @ d)
-    return m - m.mean()
-
-
-def reconstruct(A, d, lam):
-    L = difference_operator(A.shape[1])
-    return solve(A, d, lam, L)
+    def __call__(self, rhs: np.ndarray) -> np.ndarray:
+        """Solve the regularised normal equations and project onto zero mean."""
+        m = np.linalg.solve(self.lhs, rhs)
+        return m - m.mean()
 
 
-def map_percent(m, reference):
-    return (m / reference * 100.0).reshape(10, 10)
+def build(lam: float):
+    A = np.load(DATA / "L3_A.npy")
+    D = np.loadtxt(DATA / "L3_d.csv", delimiter=",")      # (3, 128)
+    meta = json.loads((DATA / "L3_meta.json").read_text(encoding="utf-8-sig"))
+    side = int(meta.get("npix", N_PIX))
+    pitch = REGION_IN_PITCH / side
+    inv = Inverter(A, lam)
+    d = D.mean(axis=0)
+    sigma = float(D.std(axis=0, ddof=1).mean())
+    return A, D, meta, side, pitch, inv, d, sigma
 
 
-def point_spread(A, lam, side=10):
-    """Impulse response -> width of the positive lobe from its second moment."""
-    n = A.shape[1]
-    centre = (side // 2) * side + side // 2
-    e = np.zeros(n)
-    e[centre] = 1.0
-    m = reconstruct(A, A @ e, lam)
-    m = m - m.mean()
-    lobe = np.clip(m.reshape(side, side), 0, None)
+def psf_width(inv: Inverter, side: int, row: int, col: int) -> float:
+    """Width of the reconstructed point-spread function, in pixels (2 sigma)."""
+    e = np.zeros(inv.n)
+    e[row * side + col] = 1.0
+    m = inv(inv.A.T @ (inv.A @ e)).reshape(side, side)
+    lobe = np.clip(m, 0, None)
     total = lobe.sum()
-    yy, xx = np.mgrid[0:side, 0:side]
     if total <= 0:
         return float("nan")
-    cy, cx = (lobe * yy).sum() / total, (lobe * xx).sum() / total
+    yy, xx = np.mgrid[0:side, 0:side]
+    cy = (lobe * yy).sum() / total
+    cx = (lobe * xx).sum() / total
     var = (lobe * ((yy - cy) ** 2 + (xx - cx) ** 2)).sum() / total
-    return float(2.0 * np.sqrt(var))          # 2 sigma as the resolved width
-
-
-def detection_limit(A, lam, sigma, reference, rng, side=10):
-    worst = []
-    for _ in range(N_NOISE):
-        noise = rng.normal(0.0, sigma, size=A.shape[0])
-        m = reconstruct(A, noise, lam)
-        worst.append(np.abs(m / reference * 100.0).max())
-    return float(np.percentile(worst, 95))
+    return float(2.0 * np.sqrt(var))
 
 
 def main():
-    missing = [p.name for p in (A_PATH, D_PATH, META_PATH) if not p.exists()]
-    if missing:
-        print(f"[L3] data not found ({', '.join(missing)}) — L3 skipped, results left empty.")
-        return None
+    A, D, meta, side, pitch, inv, d, sigma = build(LAMBDA_REF)
 
-    A, raw, meta = load()
-    reps = repeats_matrix(raw)
-    d = reps.mean(axis=1)
-    sigma = float(np.mean(reps.std(axis=1, ddof=1)))
-    reference = float(meta.get("reference_conductivity", meta.get("reference", d.mean())))
-    spec = float(meta.get("specification_percent", SPEC_DEFAULT))
-    lam0 = float(meta.get("regularisation", 1e-2))
-
-    # regularisation sweep
-    sweep = []
-    for s in LAMBDA_SCALES:
-        m = reconstruct(A, d, lam0 * s)
-        sweep.append((s, float(np.linalg.norm(A @ m - d)), float(np.linalg.norm(np.diff(
-            np.sort(m))))))
-    lam = lam0
-
-    m = reconstruct(A, d, lam)
-    grid = map_percent(m, reference)
+    # 1. non-uniformity map, in per cent of the reference conductivity
+    m = inv(A.T @ d)
+    grid = (m * 100.0).reshape(side, side)
     r_max, c_max = np.unravel_index(np.argmax(grid), grid.shape)
     r_min, c_min = np.unravel_index(np.argmin(grid), grid.shape)
 
-    pitch = float(meta.get("probe_pitch", meta.get("pitch", 0.6)))
-    resolution = point_spread(A, lam)
-    rng = np.random.default_rng(SEED)
-    det = detection_limit(A, lam, sigma, reference, rng)
+    def coords(r, c):
+        return float((c - (side - 1) / 2) * pitch), float((r - (side - 1) / 2) * pitch)
 
-    margin = float(np.abs(grid).max() + det)
-    passed = bool(margin < spec)
+    x_max, y_max = coords(r_max, c_max)
+    x_min, y_min = coords(r_min, c_min)
+
+    # 2. stability against the smoothness strength
+    sweep = []
+    for f in SWEEP_FACTORS:
+        inv_f = Inverter(A, LAMBDA_REF * f)
+        g = (inv_f(A.T @ d) * 100.0)
+        sweep.append({"factor": f, "max_pct": float(g.max()),
+                      "max_row": int(np.unravel_index(np.argmax(g), grid.shape)[0]),
+                      "max_col": int(np.unravel_index(np.argmax(g), grid.shape)[1])})
+
+    # 3. spatial resolution from the point-spread function
+    w_centre = psf_width(inv, side, side // 2, side // 2)
+    w_off = psf_width(inv, side, 2, side - 3)
+    resolution_pitch = max(w_centre, w_off) * pitch
+
+    # 4. detection limit: 500 noise-only reconstructions, 95th percentile
+    rng = np.random.default_rng(SEED)
+    peaks = []
+    for _ in range(N_NOISE):
+        nv = rng.normal(0.0, sigma, size=A.shape[0])
+        peaks.append(np.abs(inv(A.T @ nv) * 100.0).max())
+    detection_pct = float(np.percentile(peaks, 95))
+
+    # 5. decision
+    margin = float(np.abs(grid).max() + detection_pct)
+    passed = bool(margin < SPEC_PERCENT)
 
     result = {
-        "map": grid.round(6).tolist(),
+        "map": [[round(float(v), 6) for v in row] for row in grid],
         "features": [
-            {"row": int(r_max), "col": int(c_max), "deviation_pct": float(grid.max()),
-             "x_pitch": float(c_max * pitch), "y_pitch": float(r_max * pitch), "sign": "+"},
-            {"row": int(r_min), "col": int(c_min), "deviation_pct": float(grid.min()),
-             "x_pitch": float(c_min * pitch), "y_pitch": float(r_min * pitch), "sign": "-"},
+            {"kind": "maximum", "row": int(r_max), "col": int(c_max),
+             "x_pitch": round(x_max, 4), "y_pitch": round(y_max, 4),
+             "deviation_pct": round(float(grid.max()), 4)},
+            {"kind": "minimum", "row": int(r_min), "col": int(c_min),
+             "x_pitch": round(x_min, 4), "y_pitch": round(y_min, 4),
+             "deviation_pct": round(float(grid.min()), 4)},
         ],
-        "resolution_probe_pitch": resolution,
-        "detection_limit_fraction": det / 100.0,
+        "resolution_probe_pitch": round(float(resolution_pitch), 3),
+        "detection_limit_fraction": round(detection_pct / 100.0, 9),
         "pass": passed,
-        "confidence": "95% (detection limit from 500 noise-only reconstructions)",
+        "confidence": (f"95%: detection limit {detection_pct:.5f}% from {N_NOISE} noise-only "
+                       f"reconstructions; margin {margin:.4f}% against {SPEC_PERCENT:.1f}%"),
+        "diagnostics": {
+            "lambda_ref": LAMBDA_REF,
+            "pitch_probe_pitch": pitch,
+            "sigma_per_reading": sigma,
+            "margin_pct": margin,
+            "resolution_centre_pitch": round(w_centre * pitch, 3),
+            "resolution_offcentre_pitch": round(w_off * pitch, 3),
+            "sweep": sweep,
+        },
     }
     (OUT / "L3_results.json").write_text(
         json.dumps(result, indent=2, ensure_ascii=False, allow_nan=False) + "\n", encoding="utf-8")
-    print(json.dumps({k: v for k, v in result.items() if k != "map"}, indent=2))
+    print(json.dumps({k: result[k] for k in ("features", "resolution_probe_pitch",
+                                             "detection_limit_fraction", "pass", "confidence")},
+                     indent=2, ensure_ascii=False))
     return result
 
 
