@@ -53,10 +53,17 @@ and the region around (−0.9, −2.1) would be rescanned at a finer pitch befor
 
 ## Figures
 
-| File | Panel |
-|---|---|
-| `fig_L3_map.png` | zero-mean non-uniformity map, max circled, min square-marked |
-| `fig_L3_spectrum.png` | singular values of A, rank = 92 |
-| `fig_L3_sweep.png` | peak deviation versus smoothness strength, 3.0 % spec line |
-| `fig_L3_psf.png` | reconstructed unit impulse (centre / off-centre) and central row profile |
-| `fig_L3_noise.png` | histogram of 500 noise-only reconstructions and the 95th percentile |
+The report figures live in docs/figures/report/ and are produced by src/report_figures.py:
+
+| Report figure | File | Panel |
+|---|---|---|
+| Figure 8(a) | ig08_report.png | zero-mean non-uniformity map, max circled, min square-marked |
+| Figure 8(b) | ig08_report.png | singular values of the forward matrix (rank 92) |
+| Figure 8(c) | ig08_report.png | roughness versus residual norm across the five penalty strengths |
+| Figure 9(a),(b) | ig09_report.png | reconstructed unit impulse, centre and off-centre |
+| Figure 9(c) | ig09_report.png | 500 noise-only reconstructions and the 95th percentile |
+
+The five analysis panels (ig_L3_map, ig_L3_spectrum, ig_L3_sweep, ig_L3_psf,
+ig_L3_noise) are written to output/ on every run of 
+eproduce.py and are not tracked,
+because the report figures above already contain the same information.
