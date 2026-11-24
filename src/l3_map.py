@@ -161,10 +161,103 @@ def main():
     }
     (OUT / "L3_results.json").write_text(
         json.dumps(result, indent=2, ensure_ascii=False, allow_nan=False) + "\n", encoding="utf-8")
+    save_figures(A, D, inv, grid, (r_max, c_max), (r_min, c_min), side, pitch, sweep, peaks)
     print(json.dumps({k: result[k] for k in ("features", "resolution_probe_pitch",
                                              "detection_limit_fraction", "pass", "confidence")},
                      indent=2, ensure_ascii=False))
     return result
+
+
+def save_figures(A, D, inv, grid, mx, mn, side, pitch, sweep, peaks):
+    """Four figures: map, spectrum, regularisation sweep, point-spread function."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    plt.rcParams.update({"font.size": 10, "axes.spines.top": False,
+                         "axes.spines.right": False})
+    extent = [-side * pitch / 2, side * pitch / 2, -side * pitch / 2, side * pitch / 2]
+    teal = "#167b8b"
+
+    # --- fig 1: non-uniformity map ------------------------------------------------
+    fig, ax = plt.subplots(figsize=(6.4, 5.4), layout="constrained")
+    im = ax.imshow(grid, extent=extent, origin="lower", cmap="RdBu_r",
+                   vmin=-3.0, vmax=3.0, interpolation="nearest")
+    cb = fig.colorbar(im, ax=ax, shrink=0.9)
+    cb.set_label("Hall-conductivity deviation (%)")
+    for (r, c), marker, edge in [(mx, "o", "black"), (mn, "s", "black")]:
+        ax.plot((c - (side - 1) / 2) * pitch, (r - (side - 1) / 2) * pitch,
+                marker, ms=13, mfc="none", mec=edge, mew=1.6)
+    ax.set(xlabel="x (probe pitches)", ylabel="y (probe pitches)",
+           title=f"G11 | zero-mean reconstruction (max {grid.max():+.3f} %, min {grid.min():+.3f} %)")
+    ax.grid(color="white", lw=0.4, alpha=0.5)
+    fig.savefig(OUT / "fig_L3_map.png", dpi=220)
+    plt.close(fig)
+
+    # --- fig 2: singular values of A ---------------------------------------------
+    sv = np.linalg.svd(A, compute_uv=False)
+    fig, ax = plt.subplots(figsize=(6.0, 4.2), layout="constrained")
+    ax.semilogy(np.arange(1, len(sv) + 1), sv, "o-", ms=3.5, color=teal)
+    ax.axvline(np.linalg.matrix_rank(A), color="gray", ls=":", lw=1.2)
+    ax.annotate(f"rank = {np.linalg.matrix_rank(A)}", (np.linalg.matrix_rank(A), sv[0]),
+                xytext=(8, 0), textcoords="offset points", fontsize=9)
+    ax.set(xlabel="index", ylabel="singular value",
+           title="Forward matrix A: 8 unobservable directions")
+    fig.savefig(OUT / "fig_L3_spectrum.png", dpi=220)
+    plt.close(fig)
+
+    # --- fig 3: regularisation sweep ---------------------------------------------
+    factors = [s["factor"] for s in sweep]
+    maxima = [s["max_pct"] for s in sweep]
+    fig, ax = plt.subplots(figsize=(6.0, 4.2), layout="constrained")
+    ax.semilogx(factors, maxima, "o-", color=teal, label="max |deviation|")
+    ax.axhline(SPEC_PERCENT, color="#c0392b", ls="--", lw=1.2, label="specification 3.0 %")
+    ax.axvline(1.0, color="gray", ls=":", lw=1.0)
+    ax.annotate(f"reference: {maxima[2]:.4f} %", (1.0, maxima[2]),
+                xytext=(10, -18), textcoords="offset points", fontsize=9,
+                arrowprops=dict(arrowstyle="-", color="gray"))
+    ax.set(xlabel="regularisation strength (x reference)", ylabel="peak deviation (%)",
+           title="Peak position is stable; amplitude is not")
+    ax.legend(fontsize=9)
+    fig.savefig(OUT / "fig_L3_sweep.png", dpi=220)
+    plt.close(fig)
+
+    # --- fig 4: point-spread function --------------------------------------------
+    fig, axes = plt.subplots(1, 3, figsize=(12.0, 4.0), layout="constrained")
+    psf_centre = None
+    for ax, (r0, c0), tag in [(axes[0], (side // 2, side // 2), "centre"),
+                              (axes[2], (2, side - 3), "off-centre")]:
+        e = np.zeros(inv.n)
+        e[r0 * side + c0] = 1.0
+        psf = inv(inv.A.T @ (inv.A @ e)).reshape(side, side)
+        if psf_centre is None:
+            psf_centre = psf
+        ax.imshow(psf, origin="lower", cmap="viridis", extent=extent)
+        ax.plot((c0 - (side - 1) / 2) * pitch, (r0 - (side - 1) / 2) * pitch,
+                "x", color="white", ms=9, mew=1.6)
+        ax.set(title=f"unit impulse, {tag}", xlabel="x (probe pitches)")
+    axes[0].set_ylabel("y (probe pitches)")
+
+    row = psf_centre[side // 2, :]
+    axes[1].plot(np.arange(side) * pitch, row / np.abs(row).max(), "o-", ms=4, color=teal)
+    axes[1].axhline(0, color="gray", lw=0.8, ls=":")
+    axes[1].set(title="point-spread function, central row",
+                xlabel="x (probe pitches)", ylabel="normalised response")
+    fig.savefig(OUT / "fig_L3_psf.png", dpi=220)
+    plt.close(fig)
+
+    # --- fig 5: detection limit ---------------------------------------------------
+    fig, ax = plt.subplots(figsize=(6.0, 4.0), layout="constrained")
+    ax.hist(peaks, bins=30, color=teal, alpha=0.8)
+    det = np.percentile(peaks, 95)
+    ax.axvline(det, color="#c0392b", ls="--", lw=1.4,
+               label=f"95th percentile = {det:.5f} %")
+    ax.set(xlabel="max |deviation| of a noise-only reconstruction (%)",
+           ylabel="count", title=f"{N_NOISE} noise-only reconstructions")
+    ax.legend(fontsize=9)
+    fig.savefig(OUT / "fig_L3_noise.png", dpi=220)
+    plt.close(fig)
+    print(f"[L3] figures written to {OUT}")
 
 
 if __name__ == "__main__":
