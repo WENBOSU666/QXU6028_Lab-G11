@@ -5,7 +5,11 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # 1. 读取与代码放在同一个文件夹中的数据和参数
-folder = Path(r"C:\Users\Administrator\Qxu6028_Lab")
+ROOT = Path(__file__).resolve().parents[1]
+DATA = ROOT / "data"
+OUT = ROOT / "output"
+OUT.mkdir(parents=True, exist_ok=True)
+folder = DATA
 files = [folder / name for name in
          ['L1_data.csv', 'L1_data.xls', 'L1_data.xlsx', 'L1_data']
          if (folder / name).exists()]
@@ -94,20 +98,20 @@ for target in [2, 4]:
                     arrowprops=dict(arrowstyle='-', color='gray'))
 fig.suptitle(f"{params.get('group', 'L1')} | T={T:g} K | "
              f'EF={EF_op:.8f} eV | C={C_op:.6f}', fontsize=14)
-fig.savefig(folder / 'L1 FIGURE.png', dpi=300)
+fig.savefig(OUT / 'fig_L1.png', dpi=300)
 plt.close(fig)
 
-# 4. 只更新已有 results.json 中的三个 L1 数值，保留其他字段
-with open(folder / 'results.json', encoding='utf-8-sig') as f:
-    results = json.load(f)
-results.setdefault('L1', {}).update({
-    'correction_factor': C_op,
-    'n_fermi_op_cm2': nf_op,
-    'mobility_corrected_cm2_Vs': mu_op
-})
-with open(folder / 'results.json', 'w', encoding='utf-8') as f:
-    json.dump(results, f, indent=2, ensure_ascii=False, allow_nan=False)
-    f.write('\n')
-print(f'读取：{data_file.name}、L1_params.json')
-print('已保存：L1 FIGURE.png、results.json')
-print(json.dumps(results['L1'], indent=2))
+# 4. 写出本阶段结果（由 reproduce.py 汇总）
+result = {
+    "correction_factor": C_op,
+    "n_fermi_op_cm2": nf_op,
+    "n_band_op_cm2": nb_op,
+    "EF_op_eV": EF_op,
+    "rho_op_ohm_sq": rho_op,
+    "mobility_corrected_cm2_Vs": mu_op,
+    "C_at_010eV": float(count(0.10, 0) / count(0.10, 0.10)),
+    "C_at_020eV": float(count(0.20, 0) / count(0.20, 0.20)),
+}
+(OUT / "L1_results.json").write_text(
+    json.dumps(result, indent=2, ensure_ascii=False, allow_nan=False) + "\n", encoding="utf-8")
+print(json.dumps(result, indent=2))

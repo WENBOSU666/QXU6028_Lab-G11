@@ -9,8 +9,12 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-folder = Path(__file__).resolve().parent
-meta = json.loads((folder/'L2_meta.json').read_text(encoding='utf-8-sig'))
+ROOT = Path(__file__).resolve().parents[1]
+DATA = ROOT / "data"
+OUT = ROOT / "output"
+OUT.mkdir(parents=True, exist_ok=True)
+folder = DATA
+meta = json.loads((DATA/'L2_meta.json').read_text(encoding='utf-8-sig'))
 raw = np.genfromtxt(folder/'L2_data.csv', delimiter=',', names=True)
 T = float(meta['T_K'])
 kT = 8.617333e-5*T
@@ -75,13 +79,20 @@ ef_lo, ef_hi = np.percentile(boot_ef, [16, 84], axis=0)
 fraction = float(np.mean(np.array(boot_gaps) > 0))
 assert len(trajectory) == len(indices) and np.all(np.isfinite(trajectory))
 
-# 5. 更新三个结果字段和完整 EF 轨迹；保留 L1、L3 及其他已有字段。
-path = folder/'results.json'
-results = json.loads(path.read_text(encoding='utf-8-sig'))
-results['L2'] = dict(model=model, Eg_kT=float(gaps[chosen]),
-                    Eg_uncertainty_kT=float((hi-lo)/2),
-                    EF_trajectory_eV=trajectory.tolist())
-path.write_text(json.dumps(results, indent=2, ensure_ascii=False, allow_nan=False)+'\n', encoding='utf-8')
+# 5. 写出本阶段结果（由 reproduce.py 汇总）
+result = dict(
+    model=model,
+    Eg_kT=float(gaps[chosen]),
+    Eg_uncertainty_kT=float((hi - lo) / 2),
+    EF_trajectory_eV=trajectory.tolist(),
+    rms_cone=float(rms[0]),
+    rms_selected=float(rms[best_gap]),
+    bootstrap_gap_lo=float(lo),
+    bootstrap_gap_hi=float(hi),
+    hard_gap_fraction=float(fraction),
+)
+(OUT / "L2_results.json").write_text(
+    json.dumps(result, indent=2, ensure_ascii=False, allow_nan=False) + "\n", encoding="utf-8")
 
 # 6. 画图：每张直接保存在代码所在文件夹。
 plt.rcParams.update({'font.size': 11, 'axes.spines.top': False, 'axes.spines.right': False})
@@ -93,7 +104,7 @@ def figure(title, xlabel, ylabel):
 
 def save(fig, ax, name):
     ax.legend(fontsize=9)
-    fig.savefig(folder/name, dpi=250)
+    fig.savefig(OUT/name, dpi=250)
     plt.close(fig)
 
 # 图 1：最优带隙拟合，和无带隙基准比较。
@@ -104,7 +115,7 @@ ax.plot(*library[best_gap].T, color='#167b8b', label=f'Best gap: RMS={rms[best_g
 xy = normalise(means)
 points = ax.scatter(*xy.T, c=indices, cmap='plasma', s=25, label='G11 repeat means')
 fig.colorbar(points, ax=ax, label='Measurement index')
-save(fig, ax, '最优带隙.png')
+save(fig, ax, 'fig_L2_model.png')
 
 # 图 2：带隙搜索；2 kBT 只作示例候选，不是指南规定的初始值。
 fig, ax = figure('G11 | Band-gap search', 'Eg / kBT', 'Nearest-curve RMS')
@@ -117,18 +128,18 @@ for j, label in [(example, 'Example'), (best_gap, 'Best')]:
     ax.annotate(f'{label}: {gaps[j]:g} kBT\nRMS={rms[j]:.6f}', (gaps[j], rms[j]),
                 xytext=(10, 30), textcoords='offset points', fontsize=9,
                 arrowprops=dict(arrowstyle='-', color='gray'))
-save(fig, ax, '带隙优化准确性图.png')
+save(fig, ax, 'fig_L2_gapsearch.png')
 
 # 图 3：EF 轨迹及逐点 bootstrap 区间，单位 eV。
 fig, ax = figure('G11 | Fermi-level trajectory', 'Measurement index', 'EF (eV)')
 ax.fill_between(indices, ef_lo, ef_hi, color='#167b8b', alpha=.25, label='16th-84th percentile')
 ax.plot(indices, trajectory, 'o-', ms=4, label='Fit to repeat means')
 ax.axhline(0, color='gray', ls=':')
-save(fig, ax, '费米能级变化图.png')
+save(fig, ax, 'fig_L2_trajectory.png')
 
 # 图 4、5：RH 和 Rs 对 EF；每条曲线按自身最大值归一化。
-for column, name, ylabel in [(0, 'RH和EF图.png', 'RH / max|RH|'),
-                              (1, 'Rs和EF图.png', 'Rs / max(Rs)')]:
+for column, name, ylabel in [(0, 'fig_L2_RH.png', 'RH / max|RH|'),
+                              (1, 'fig_L2_Rs.png', 'Rs / max(Rs)')]:
     fig, ax = figure('G11 | '+('RH' if column==0 else 'Rs')+' versus EF', 'EF / kBT', ylabel)
     for j, label, color in [(0, 'Cone: Eg=0', 'gray'),
                              (example, 'Example: Eg=2 kBT', '#d18c35'),
