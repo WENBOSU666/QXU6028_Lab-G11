@@ -78,19 +78,36 @@ def build(lam: float):
 
 
 def psf_width(inv: Inverter, side: int, row: int, col: int) -> float:
-    """Width of the reconstructed point-spread function, in pixels (2 sigma)."""
-    e = np.zeros(inv.n)
-    e[row * side + col] = 1.0
-    m = inv(inv.A.T @ (inv.A @ e)).reshape(side, side)
-    lobe = np.clip(m, 0, None)
-    total = lobe.sum()
+    """FWHM of the positive central lobe, in pixels.
+
+    Methods guide, p. 12: inject a unit value at one pixel, remove its mean so the
+    test map is zero-mean, reconstruct with the same eta and solver, then use the
+    positive-lobe weights w = max(q_hat, 0) with the radius taken from the injected
+    pixel:  sigma^2 = sum(w r^2) / (2 sum w),  FWHM = 2.355 sigma.
+    """
+    q = np.zeros(inv.n)
+    q[row * side + col] = 1.0
+    q -= q.mean()
+    q_hat = inv(inv.A.T @ (inv.A @ q)).reshape(side, side)
+    w = np.clip(q_hat, 0, None)
+    total = w.sum()
     if total <= 0:
         return float("nan")
     yy, xx = np.mgrid[0:side, 0:side]
-    cy = (lobe * yy).sum() / total
-    cx = (lobe * xx).sum() / total
-    var = (lobe * ((yy - cy) ** 2 + (xx - cx) ** 2)).sum() / total
-    return float(2.0 * np.sqrt(var))
+    r2 = (yy - row) ** 2 + (xx - col) ** 2
+    sigma2 = (w * r2).sum() / (2.0 * total)
+    return float(2.355 * np.sqrt(sigma2))
+
+
+def noise_limit(inv: Inverter, sigma: np.ndarray, draws: int = N_NOISE,
+                seed: int = SEED) -> float:
+    """95th percentile of max|m| over noise-only reconstructions, in per cent."""
+    rng = np.random.default_rng(seed)
+    vals = []
+    for _ in range(draws):
+        nv = rng.normal(0.0, sigma)
+        vals.append(np.abs(inv(inv.A.T @ nv) * 100.0).max())
+    return float(np.percentile(vals, 95))
 
 
 def main():
@@ -117,18 +134,24 @@ def main():
                       "max_row": int(np.unravel_index(np.argmax(g), grid.shape)[0]),
                       "max_col": int(np.unravel_index(np.argmax(g), grid.shape)[1])})
 
-    # 3. spatial resolution from the point-spread function
+    # 3. spatial resolution: FWHM of the positive lobe (methods guide, p. 12)
     w_centre = psf_width(inv, side, side // 2, side // 2)
     w_off = psf_width(inv, side, 2, side - 3)
     resolution_pitch = max(w_centre, w_off) * pitch
 
-    # 4. detection limit: 500 noise-only reconstructions, 95th percentile
+    # 4. detection limit: 500 noise-only reconstructions at the same eta as the map
     rng = np.random.default_rng(SEED)
     peaks = []
     for _ in range(N_NOISE):
         nv = rng.normal(0.0, sigma)
         peaks.append(np.abs(inv(A.T @ nv) * 100.0).max())
     detection_pct = float(np.percentile(peaks, 95))
+
+    # 4b. same test at the weakest eta of the sweep: peak and delta_95 must share eta
+    weakest = min(sweep, key=lambda s: s["factor"])
+    inv_weak = Inverter(A, LAMBDA_REF * weakest["factor"])
+    delta_weak = noise_limit(inv_weak, sigma)
+    weakest_bound = float(weakest["max_pct"]) + delta_weak
 
     # 5. decision
     margin = float(np.abs(grid).max() + detection_pct)
@@ -157,6 +180,10 @@ def main():
             "margin_pct": margin,
             "resolution_centre_pitch": round(w_centre * pitch, 3),
             "resolution_offcentre_pitch": round(w_off * pitch, 3),
+            "weakest_eta_factor": weakest["factor"],
+            "weakest_eta_peak_pct": weakest["max_pct"],
+            "weakest_eta_delta95_pct": round(delta_weak, 6),
+            "weakest_eta_bound_pct": round(weakest_bound, 4),
             "sweep": sweep,
         },
     }

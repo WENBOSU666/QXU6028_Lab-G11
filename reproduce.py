@@ -135,15 +135,23 @@ def main() -> int:
 
     stage = {key: run_stage(key, script) for key, script in STAGES}
     payload = merge(stage)
-    text = json.dumps(payload, indent=2, ensure_ascii=False, allow_nan=False) + "\n"
-    (ROOT / args.out / "results.json").write_text(text, encoding="utf-8")
-    (ROOT / "results.json").write_text(text, encoding="utf-8")
+
+    # submitted file: exactly the seven keys of the supplied schema
+    submitted = {k: payload[k] for k in
+                 ("schema_version", "group", "dataset_set", "pipeline_commit", "L1", "L2", "L3")}
+    (ROOT / "results.json").write_text(
+        json.dumps(submitted, indent=2, ensure_ascii=False, allow_nan=False) + "\n", encoding="utf-8")
+
+    # full record (with diagnostics) kept out of the submitted file
+    payload["diagnostics"]["l3_available"] = bool(stage.get("L3"))
+    (ROOT / args.out / "results.json").write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False, allow_nan=False) + "\n", encoding="utf-8")
 
     print("\n" + "=" * 60)
     print(f"L1 correction factor : {payload['L1']['correction_factor']}")
     print(f"L2 model / Eg (kBT)  : {payload['L2']['model']} / {payload['L2']['Eg_kT']}")
     print(f"L3 available         : {payload['diagnostics']['l3_available']}")
-    print(f"results.json written to {ROOT / 'results.json'}")
+    print(f"submitted results.json keys: {list(submitted)}")
     return 0
 
 
