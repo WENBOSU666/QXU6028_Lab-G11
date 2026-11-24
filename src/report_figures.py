@@ -290,9 +290,13 @@ def fig07(d):
         ax.plot(ef, res[:, col], "o", color=c, ms=4)
         ax.axhline(0, color=NAVY, lw=0.9)
         ax.axvline(0, color="gray", ls=":", lw=0.9)
+        ax.set_ylim(-0.04, 0.04)          # same fixed range as the report, both panels
+        ax.set_yticks([-0.04, -0.02, 0.00, 0.02, 0.04])
         ax.text(0.99, 0.94, f"RMSE = {rmse[col]:.6f}", transform=ax.transAxes,
                 ha="right", va="top", fontsize=9.5)
         style(ax, title, None if col == 0 else r"Fitted $E_F/k_B T$", "Normalised residual")
+        if col == 0:
+            ax.tick_params(labelbottom=False)
     save(fig, "fig07_report.png")
 
 
