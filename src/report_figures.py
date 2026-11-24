@@ -413,7 +413,6 @@ def fig09(A, D, L):
     ax.annotate(f"95th percentile\n{det:.2f}", (det, ax.get_ylim()[1] * 0.78), xytext=(8, 0),
                 textcoords="offset points", fontsize=9, color=ORANGE)
     style(ax, "(c) Noise-only peak", r"Peak $|m|$ ($10^{-6}$)", "Noise maps")
-    style(ax, "(c) Noise-only peak", r"Peak $|m|$ ($10^{-6}$)", "Count")
     save(fig, "fig09_report.png")
     print(f"[report figs] detection limit {det:.2f}e-6 (report 2.74)")
 
