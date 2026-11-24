@@ -331,24 +331,31 @@ def invert(A, d, lam, L):
 
 def fig08(A, d, L):
     extent = [-3, 3, -3, 3]
-    fig = plt.figure(figsize=(9.8, 3.5), layout="constrained")
-    gs = GridSpec(1, 3, figure=fig, width_ratios=[1.15, 1.0, 1.15])
+    fig = plt.figure(figsize=(9.8, 4.5), layout="constrained")
+    gs = GridSpec(3, 2, figure=fig, height_ratios=[1.0, 1.0, 0.085],
+                  width_ratios=[1.05, 1.0])
 
     grid = (invert(A, d, LAMBDA_REF, L) * 100).reshape(SIDE, SIDE)
-    ax = fig.add_subplot(gs[0, 0])
+    ax = fig.add_subplot(gs[0:2, 0])
     im = ax.imshow(grid, extent=extent, origin="lower", cmap="RdBu_r", vmin=-3, vmax=3)
     for (r, c), mk in [(np.unravel_index(grid.argmax(), grid.shape), "o"),
                        (np.unravel_index(grid.argmin(), grid.shape), "s")]:
-        ax.plot((c - 4.5) * PITCH, (r - 4.5) * PITCH, mk, ms=10, mfc="none", mec="black",
-                mew=1.3)
+        ax.plot((c - 4.5) * PITCH, (r - 4.5) * PITCH, mk, ms=11, mfc="none", mec="black",
+                mew=1.6)
     style(ax, "(a) Relative Hall conductivity", "x (probe pitches)", "y (probe pitches)")
-    cb = fig.colorbar(im, ax=ax, shrink=0.85, pad=0.02)
-    cb.set_label("Deviation from reference (%)", fontsize=7.5)
-    cb.ax.tick_params(labelsize=7)
+    ax.set_xticks([-3, 0, 3])
+    ax.set_yticks([-3, 0, 3])
+    cax = fig.add_subplot(gs[2, 0])
+    cb = fig.colorbar(im, cax=cax, orientation="horizontal")
+    cb.set_ticks([-3, 0, 3])
+    cb.set_label("Deviation from reference (%)", fontsize=9)
+    cb.ax.tick_params(labelsize=8)
 
     sv = np.linalg.svd(A, compute_uv=False)
     ax = fig.add_subplot(gs[0, 1])
-    ax.semilogy(np.arange(1, len(sv) + 1), sv, ".", ms=2.2, color="#1f3b73")
+    ax.semilogy(np.arange(1, len(sv) + 1), sv, "o", ms=2.8, color="#1f3b73", mew=0)
+    ax.set_xticks([1, 25, 50, 75, 100])
+    ax.set_yticks([1e0, 1e-8, 1e-16])
     style(ax, "(b) Forward matrix spectrum", "Singular value index", "Singular value")
 
     res, rough, labels = [], [], []
@@ -357,28 +364,43 @@ def fig08(A, d, L):
         res.append(np.linalg.norm(A @ mf - d))
         rough.append(np.linalg.norm(L @ mf))
         labels.append(f"{f:g}×")
-    ax = fig.add_subplot(gs[0, 2])
-    ax.loglog(res, rough, "o-", ms=4, color=TEAL)
-    for r, g, lab, off in zip(res, rough, labels,
-                              [(4, 6), (4, -10), (6, 6), (6, 4), (-18, 6)]):
-        ax.annotate(lab, (r, g), xytext=off, textcoords="offset points", fontsize=7)
-    style(ax, "(c) Changing the penalty", r"Residual norm $\|Am-d\|_2$",
+    ax = fig.add_subplot(gs[1, 1])
+    ax.loglog(res, rough, "o-", ms=6, lw=1.6, color=TEAL)
+    for r, g, lab in zip(res, rough, labels):
+        ax.annotate(lab, (r, g), xytext=(0, 8), textcoords="offset points",
+                    fontsize=9, ha="center")
+    ax.set_yticks([0.05, 0.06])
+    ax.set_yticklabels(["0.05", "0.06"])
+    ax.set_ylim(0.0465, 0.0648)
+    style(ax, "(c) Changing the penalty", r"Residual norm $\|Am-\tilde{d}\|_2$",
           r"Roughness $\|Lm\|_2$")
     save(fig, "fig08_report.png")
 
 
 def fig09(A, D, L):
     extent = [-3, 3, -3, 3]
-    fig = plt.figure(figsize=(9.8, 3.2), layout="constrained")
-    gs = GridSpec(1, 3, figure=fig, width_ratios=[1.0, 1.0, 1.35])
+    fig = plt.figure(figsize=(10.4, 4.2), layout="constrained")
+    gs = GridSpec(2, 3, figure=fig, height_ratios=[1.0, 0.075], width_ratios=[1.0, 1.0, 1.3])
+
+    psfs = {}
     for col, (r0, c0), tag in [(0, (5, 5), "(a) Central impulse"),
                                (1, (2, 7), "(b) Off-centre impulse")]:
         e = np.zeros(A.shape[1]); e[r0 * SIDE + c0] = 1.0
-        psf = invert(A, A @ e, LAMBDA_REF, L).reshape(SIDE, SIDE)
+        psfs[col] = invert(A, A @ e, LAMBDA_REF, L).reshape(SIDE, SIDE)
+    vmax = max(p.max() for p in psfs.values())
+    for col, (r0, c0), tag in [(0, (5, 5), "(a) Central impulse"),
+                               (1, (2, 7), "(b) Off-centre impulse")]:
         ax = fig.add_subplot(gs[0, col])
-        ax.imshow(psf, extent=extent, origin="lower", cmap="viridis")
-        ax.plot((c0 - 4.5) * PITCH, (r0 - 4.5) * PITCH, "x", color="white", ms=8, mew=1.4)
+        im = ax.imshow(psfs[col], extent=extent, origin="lower", cmap="viridis",
+                       vmin=0, vmax=vmax)
+        ax.plot((c0 - 4.5) * PITCH, (r0 - 4.5) * PITCH, "+", color="white", ms=12, mew=2.2)
         style(ax, tag, "x (pitches)", "y (pitches)" if col == 0 else None)
+        ax.set_xticks([-3, 0, 3])
+        ax.set_yticks([-3, 0, 3])
+    cax = fig.add_subplot(gs[1, 0:2])
+    cb = fig.colorbar(im, cax=cax, orientation="horizontal")
+    cb.set_label("Recovered response to unit impulse", fontsize=9)
+    cb.ax.tick_params(labelsize=8)
 
     sigma = D.std(axis=0, ddof=1)
     rng = np.random.default_rng(SEED)
@@ -387,9 +409,10 @@ def fig09(A, D, L):
     det = float(np.percentile(peaks, 95))
     ax = fig.add_subplot(gs[0, 2])
     ax.hist(peaks, bins=26, color="#7fb3a9", edgecolor="white")
-    ax.axvline(det, color="#c0392b", ls="--", lw=1.2)
-    ax.annotate(f"95th percentile\n{det:.2f}", (det, ax.get_ylim()[1] * 0.72), xytext=(6, 0),
-                textcoords="offset points", fontsize=7.5)
+    ax.axvline(det, color=ORANGE, ls="--", lw=1.6)
+    ax.annotate(f"95th percentile\n{det:.2f}", (det, ax.get_ylim()[1] * 0.78), xytext=(8, 0),
+                textcoords="offset points", fontsize=9, color=ORANGE)
+    style(ax, "(c) Noise-only peak", r"Peak $|m|$ ($10^{-6}$)", "Noise maps")
     style(ax, "(c) Noise-only peak", r"Peak $|m|$ ($10^{-6}$)", "Count")
     save(fig, "fig09_report.png")
     print(f"[report figs] detection limit {det:.2f}e-6 (report 2.74)")
