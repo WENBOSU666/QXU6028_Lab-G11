@@ -25,12 +25,13 @@ constant. `rank(A) = 92`, so eight directions of the 100-pixel map are unobserva
 2. Solve the regularised normal equations `(AᵀA + λ LᵀL) m = Aᵀ d` with `L` the first-order
    neighbour-difference operator on the 10 × 10 grid, then subtract the mean of `m`
    (exactly the zero-mean constraint, since `A @ 1 = 0`).
-3. Reference smoothness λ = 1.33 × 10⁻³; the decision is checked at 0.01×, 0.1×, 1×, 10×
-   and 100× this value.
-4. Resolution from the reconstructed point-spread function of a unit impulse, taken as the
-   2σ width of the positive lobe, in probe pitches.
-5. Detection limit from 500 noise-only reconstructions: the 95th percentile of the largest
-   absolute deviation over the map.
+3. Reference smoothness η₀ = 10⁻² · ‖A‖₂² / ‖L‖₂² = 1.331 × 10⁻³ (methods guide); the
+   decision is checked at 0.01×, 0.1×, 1×, 10× and 100× this value.
+4. Resolution from a zero-mean unit-impulse test map: reconstruct with the same η and solver,
+   then FWHM = 2.355 σ with σ² = Σ(w r²)/(2 Σw) over the positive lobe, r measured from the
+   injected pixel (methods guide, p. 12).
+5. Detection limit from 500 noise-only reconstructions (seed 20260924): the 95th percentile of
+   the largest absolute deviation over the map, evaluated at the same η as the reported peak.
 
 ## Results
 
@@ -38,8 +39,8 @@ constant. `rank(A) = 92`, so eight directions of the 100-pixel map are unobserva
 |---|---|
 | maximum deviation | **+2.9094 %** at (−0.9, −2.1) probe pitches |
 | minimum deviation | **−1.7557 %** at (+2.7, +2.7) probe pitches |
-| spatial resolution | **1.74 probe pitches** (centre 1.74, off-centre 1.56) |
-| detection limit (95 %) | **0.000275 %** (per-channel noise, 500 draws) |
+| spatial resolution | **1.444 probe pitches** (centre 1.444, off-centre 1.304) |
+| detection limit (95 %) | **0.000274 %** (per-channel noise, 500 draws, seed 20260924) |
 | noise-adjusted margin | **2.9097 %** |
 | decision | **pass** (2.9097 % < 3.0 %) |
 

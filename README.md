@@ -46,14 +46,17 @@ The command reads the raw files in `data/`, runs the three stages in order and w
 |---|---|---|
 | L1 | correction factor **C = 3.953** at E_F = 0.15550 eV; n_F = 4.6127 × 10¹¹ cm⁻²; mobility **47,337 cm² V⁻¹ s⁻¹** | `output/fig_L1.png` |
 | L2 | **hard_gap** model; **E_g = 3.25 k_BT (84.0 meV)**; E_F from −77.9 to +135.7 meV; RMS 0.0987 → 0.0126 | `output/fig_L2_*.png` |
-| L3 | map max **+2.9094 %** at (-0.9, -2.1), min -1.7557 %; resolution **1.74 probe pitches**; detection limit 0.000275 %; **pass** (margin 2.9097 % < 3.0 %) | output/fig_L3_*.png |
+| L3 | map max **+2.9094 %** at (-0.9, -2.1), min -1.7557 %; resolution **1.444 probe pitches**; detection limit 0.000274 %; **pass** (margin 2.9097 % < 3.0 %) | `output/fig_L3_*.png` |
 
 ## Reproducibility notes
 
 - Both stages read only from `data/` and write only to `output/`; there are no absolute paths.
 - Random procedures are seeded (`reproduce.py --seed 0`): the L2 bootstrap uses a fixed
   generator seed and the L3 noise study uses `default_rng(0)`.
-- `results.json` records `pipeline_commit`, the commit the numbers were produced from.
+- `results.json` records `pipeline_commit`, the commit the numbers were produced from, and the
+  noise seed (20260924) in the L3 `confidence` field.
+- The submitted `results.json` is reproduced by a clean run to within 1e-7 relative on two
+  floats (resolution, detection limit); the only field that changes is `pipeline_commit`.
 - A clean-clone test is documented in the report: clone into an empty folder and run
   `python reproduce.py`.
 

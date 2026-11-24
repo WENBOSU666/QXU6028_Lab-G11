@@ -28,10 +28,9 @@ OUT.mkdir(parents=True, exist_ok=True)
 N_PIX = 10                 # 10 x 10 map
 REGION_IN_PITCH = 6.0      # scan region is 6s x 6s, s = probe pitch
 SPEC_PERCENT = 3.0
-LAMBDA_REF = 1.33e-3       # reference smoothness strength
 SWEEP_FACTORS = (0.01, 0.1, 1.0, 10.0, 100.0)
 N_NOISE = 500
-SEED = 0
+SEED = 20260924            # recorded in the confidence field of results.json
 
 
 def difference_operator(n_pix: int, side: int) -> np.ndarray:
@@ -51,12 +50,18 @@ def difference_operator(n_pix: int, side: int) -> np.ndarray:
     return np.asarray(rows)
 
 
+def inv_eta(inv):
+    """Recover the eta actually used by an Inverter."""
+    return float(getattr(inv, "eta", 0.0))
+
+
 class Inverter:
     def __init__(self, A: np.ndarray, lam: float):
         self.A = A
         self.n = A.shape[1]
         self.side = int(round(np.sqrt(self.n)))
         self.L = difference_operator(self.n, self.side)
+        self.eta = float(lam)
         self.lhs = A.T @ A + lam * (self.L.T @ self.L) + 1e-12 * np.eye(self.n)
 
     def __call__(self, rhs: np.ndarray) -> np.ndarray:
@@ -65,12 +70,22 @@ class Inverter:
         return m - m.mean()
 
 
-def build(lam: float):
+def reference_eta(A: np.ndarray, L: np.ndarray) -> float:
+    """eta0 = 1e-2 * ||A||_2^2 / ||L||_2^2  (methods guide, L3 starter prompt)."""
+    sA = np.linalg.svd(A, compute_uv=False)[0]
+    sL = np.linalg.svd(L, compute_uv=False)[0]
+    return 1e-2 * sA ** 2 / sL ** 2
+
+
+def build(lam: float = None):
     A = np.load(DATA / "L3_A.npy")
     D = np.loadtxt(DATA / "L3_d.csv", delimiter=",")      # (3, 128)
     meta = json.loads((DATA / "L3_meta.json").read_text(encoding="utf-8-sig"))
     side = int(meta.get("npix", N_PIX))
     pitch = REGION_IN_PITCH / side
+    L = difference_operator(A.shape[1], side)
+    if lam is None:
+        lam = reference_eta(A, L)
     inv = Inverter(A, lam)
     d = D.mean(axis=0)
     sigma = D.std(axis=0, ddof=1)          # per-channel noise: each reading has its own repeat spread
@@ -111,7 +126,8 @@ def noise_limit(inv: Inverter, sigma: np.ndarray, draws: int = N_NOISE,
 
 
 def main():
-    A, D, meta, side, pitch, inv, d, sigma = build(LAMBDA_REF)
+    A, D, meta, side, pitch, inv, d, sigma = build()
+    eta = inv_eta(inv)
 
     # 1. non-uniformity map, in per cent of the reference conductivity
     m = inv(A.T @ d)
@@ -128,7 +144,7 @@ def main():
     # 2. stability against the smoothness strength
     sweep = []
     for f in SWEEP_FACTORS:
-        inv_f = Inverter(A, LAMBDA_REF * f)
+        inv_f = Inverter(A, eta * f)
         g = (inv_f(A.T @ d) * 100.0)
         sweep.append({"factor": f, "max_pct": float(g.max()),
                       "max_row": int(np.unravel_index(np.argmax(g), grid.shape)[0]),
@@ -149,7 +165,7 @@ def main():
 
     # 4b. same test at the weakest eta of the sweep: peak and delta_95 must share eta
     weakest = min(sweep, key=lambda s: s["factor"])
-    inv_weak = Inverter(A, LAMBDA_REF * weakest["factor"])
+    inv_weak = Inverter(A, eta * weakest["factor"])
     delta_weak = noise_limit(inv_weak, sigma)
     weakest_bound = float(weakest["max_pct"]) + delta_weak
 
@@ -158,7 +174,7 @@ def main():
     passed = bool(margin < SPEC_PERCENT)
 
     result = {
-        "map": [[round(float(v), 6) for v in row] for row in grid],
+        "map": [round(float(v) / 100.0, 12) for v in grid.ravel()],
         "features": [
             {"kind": "maximum", "row": int(r_max), "col": int(c_max),
              "x_pitch": round(x_max, 4), "y_pitch": round(y_max, 4),
@@ -167,13 +183,16 @@ def main():
              "x_pitch": round(x_min, 4), "y_pitch": round(y_min, 4),
              "deviation_pct": round(float(grid.min()), 4)},
         ],
-        "resolution_probe_pitch": round(float(resolution_pitch), 3),
-        "detection_limit_fraction": round(detection_pct / 100.0, 9),
+        "resolution_probe_pitch": float(resolution_pitch),
+        "detection_limit_fraction": float(detection_pct / 100.0),
         "pass": passed,
-        "confidence": (f"95%: detection limit {detection_pct:.5f}% from {N_NOISE} noise-only "
-                       f"reconstructions; margin {margin:.4f}% against {SPEC_PERCENT:.1f}%"),
+        "confidence": (
+            f"Clear pass at the reference regularisation: the 95th-percentile detection "
+            f"limit is {detection_pct:.6f}% of the reference conductivity ({N_NOISE} noise-only "
+            f"reconstructions, seed {SEED}). The noise-adjusted upper bound is {margin:.4f}%, "
+            f"below the {SPEC_PERCENT:.1f}% limit by {SPEC_PERCENT - margin:.4f} percentage points."),
         "diagnostics": {
-            "lambda_ref": LAMBDA_REF,
+            "lambda_ref": eta,
             "pitch_probe_pitch": pitch,
             "sigma_per_reading_mean": float(np.mean(sigma)),
             "sigma_per_reading_max": float(np.max(sigma)),
