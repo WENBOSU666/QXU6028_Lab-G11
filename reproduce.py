@@ -21,7 +21,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 SRC = ROOT / "src"
-STAGES = [("L1", "l1_forward.py"), ("L2", "l2_inverse.py"), ("L3", "l3_map.py")]
+STAGES = [("L1", "l1_forward.py"), ("L2", "l2_inverse.py"), ("L3", "l3_map.py"),
+          ("FIG", "report_figures.py")]
 
 
 def pipeline_commit() -> str:
@@ -60,6 +61,8 @@ def run_stage(key: str, script: str) -> dict:
     print(f"[done] {key} in {time.time() - t0:.1f}s")
 
     out_file = ROOT / "output" / f"{key}_results.json"
+    if key == "FIG":
+        return {}
     if out_file.exists():
         return json.loads(out_file.read_text(encoding="utf-8"))
     if isinstance(ns.get("RESULT"), dict):
